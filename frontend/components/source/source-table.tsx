@@ -133,6 +133,10 @@ function CertaintyCell({ source }: { source: Source }) {
   );
 }
 
+// The trailing column is left unsized so it soaks up whatever width is left
+// over, keeping the table flush with its container at any column size.
+const LAST_COLUMN_ID = "actions";
+
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-gray-100 text-gray-700",
   INCLUDED: "bg-green-100 text-green-700",
@@ -172,6 +176,7 @@ export function SourceTable({
       cols.push({
         id: "select",
         header: () => null,
+        enableResizing: false,
         cell: ({ row }) => (
           <Checkbox
             checked={selectedIds.has(row.original.id)}
@@ -186,12 +191,13 @@ export function SourceTable({
     cols.push(
       {
         accessorKey: "title",
+        size: 420,
         header: ({ column }) => <SortableHeader column={column}>Title</SortableHeader>,
         cell: ({ row }) => (
           <div className="flex items-center gap-2 min-w-0">
             <Link
               href={getSourceUrl(row.original.id)}
-              className="font-medium hover:underline truncate max-w-md"
+              className="font-medium hover:underline truncate min-w-0"
               title={row.original.title}
             >
               {row.original.title}
@@ -206,16 +212,18 @@ export function SourceTable({
       },
       {
         id: "authors",
+        size: 200,
         accessorFn: (row) => row.authors?.join(", ") || "",
         header: ({ column }) => <SortableHeader column={column}>Authors</SortableHeader>,
         cell: ({ getValue }) => (
-          <span className="truncate max-w-48 block text-sm text-muted-foreground" title={getValue() as string}>
+          <span className="truncate block text-sm text-muted-foreground" title={getValue() as string}>
             {(getValue() as string) || "—"}
           </span>
         ),
       },
       {
         id: "year",
+        size: 90,
         accessorFn: (row) =>
           row.publicationDate ? new Date(row.publicationDate).getFullYear() : null,
         header: ({ column }) => <SortableHeader column={column}>Year</SortableHeader>,
@@ -226,15 +234,17 @@ export function SourceTable({
       },
       {
         accessorKey: "venue",
+        size: 170,
         header: ({ column }) => <SortableHeader column={column}>Venue</SortableHeader>,
         cell: ({ getValue }) => (
-          <span className="truncate max-w-32 block text-sm text-muted-foreground" title={(getValue() as string) || ""}>
+          <span className="truncate block text-sm text-muted-foreground" title={(getValue() as string) || ""}>
             {(getValue() as string) || "—"}
           </span>
         ),
       },
       {
         id: "certainty",
+        size: 170,
         accessorFn: (row) => getVotingSortValue(getSourceConfidence(row)),
         header: ({ column }) => <SortableHeader column={column}>Certainty</SortableHeader>,
         cell: ({ row }) => <CertaintyCell source={row.original} />,
@@ -245,6 +255,7 @@ export function SourceTable({
       },
       {
         id: "status",
+        size: 190,
         accessorFn: (row) => getDisplayStatus(row),
         header: ({ column }) => <SortableHeader column={column}>Status</SortableHeader>,
         cell: ({ row }) => {
@@ -258,6 +269,7 @@ export function SourceTable({
       },
       {
         id: "actions",
+        enableResizing: false,
         header: () => null,
         cell: ({ row }) => {
           const source = row.original;
@@ -319,6 +331,8 @@ export function SourceTable({
     data: sources,
     columns,
     state: { sorting },
+    enableColumnResizing: true,
+    columnResizeMode: "onChange",
     onSortingChange: (updater) => {
       const next = typeof updater === "function" ? updater(sorting) : updater;
       onSortingChange(next);
@@ -347,15 +361,39 @@ export function SourceTable({
   return (
     <div className="space-y-4">
       <div className="rounded-md border overflow-x-auto">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="py-2 px-3 whitespace-nowrap">
+                  <TableHead
+                    key={header.id}
+                    className="relative py-2 px-3 whitespace-nowrap overflow-hidden"
+                    style={
+                      header.column.id === LAST_COLUMN_ID
+                        ? undefined
+                        : { width: header.getSize() }
+                    }
+                  >
                     {header.isPlaceholder
                       ? null
                       : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getCanResize() && (
+                      <div
+                        role="separator"
+                        aria-orientation="vertical"
+                        title="Drag to resize, double-click to reset"
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        onDoubleClick={() => header.column.resetSize()}
+                        className={cn(
+                          "absolute top-0 right-0 h-full w-1.5 cursor-col-resize touch-none select-none",
+                          "after:absolute after:inset-y-1 after:right-0 after:w-px after:bg-border after:content-['']",
+                          "hover:after:bg-primary hover:after:w-0.5",
+                          header.column.getIsResizing() && "after:bg-primary after:w-0.5",
+                        )}
+                      />
+                    )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -365,7 +403,15 @@ export function SourceTable({
             {table.getRowModel().rows.map((row) => (
               <TableRow key={row.id} className="hover:bg-muted/50">
                 {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="py-2 px-3">
+                  <TableCell
+                    key={cell.id}
+                    className="py-2 px-3 overflow-hidden"
+                    style={
+                      cell.column.id === LAST_COLUMN_ID
+                        ? undefined
+                        : { width: cell.column.getSize() }
+                    }
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </TableCell>
                 ))}
