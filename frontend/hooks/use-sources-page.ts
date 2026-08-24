@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo } from "react";
 import { type SortingState } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Source } from "@/types/source";
+import { getSourceConfidence, isContested } from "@/lib/source-confidence";
 
 interface Study {
   id: string;
@@ -33,6 +34,7 @@ export function useSourcesPage() {
 
   const [tab, setTab] = useState<string>(filterParam || "all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [contestedOnly, setContestedOnly] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [suggestions, setSuggestions] = useState<Record<string, any>>({});
   const [loadingMap, setLoadingMap] = useState<Record<string, boolean>>({});
@@ -73,9 +75,10 @@ export function useSourcesPage() {
     router.push(`/studies/${studyId}/sources?${newParams.toString()}`, { scroll: false });
   };
 
-  // Reset search when tab changes
+  // Reset search and filters when tab changes
   useEffect(() => {
     setSearchQuery("");
+    setContestedOnly(false);
   }, [tab]);
 
   // Filter logic
@@ -133,17 +136,27 @@ export function useSourcesPage() {
     );
   }, [filteredSources, searchQuery]);
 
+  // Sources where the LLMs split on at least one criterion — the ones the
+  // ensemble could not settle on its own. Counted before the toggle is applied
+  // so the badge keeps showing how many there are while filtering.
+  const contestedSources = useMemo(
+    () => searchedSources.filter((s) => isContested(getSourceConfidence(s))),
+    [searchedSources],
+  );
+
+  const visibleSources = contestedOnly ? contestedSources : searchedSources;
+
   // Store source IDs in sessionStorage for prev/next navigation
   const navKey = `sources-nav-${studyId}-${tab}`;
   useEffect(() => {
-    if (searchedSources.length > 0) {
+    if (visibleSources.length > 0) {
       try {
-        sessionStorage.setItem(navKey, JSON.stringify(searchedSources.map((s) => s.id)));
+        sessionStorage.setItem(navKey, JSON.stringify(visibleSources.map((s) => s.id)));
       } catch {
         // sessionStorage might be full or unavailable
       }
     }
-  }, [searchedSources, navKey]);
+  }, [visibleSources, navKey]);
 
   // Mutations
   const deleteMutation = useMutation({
@@ -242,7 +255,7 @@ export function useSourcesPage() {
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      const ids = searchedSources.map((s) => s.id);
+      const ids = visibleSources.map((s) => s.id);
       setSelectedIds(new Set(ids));
     } else {
       setSelectedIds(new Set());
@@ -255,9 +268,12 @@ export function useSourcesPage() {
     isLoading,
     error,
     tab,
-    filteredSources: searchedSources,
+    filteredSources: visibleSources,
     searchQuery,
     setSearchQuery,
+    contestedOnly,
+    setContestedOnly,
+    contestedCount: contestedSources.length,
     sorting,
     setSorting,
     navKey,

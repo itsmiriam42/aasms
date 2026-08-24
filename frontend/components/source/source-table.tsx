@@ -42,6 +42,13 @@ import {
   Trash2,
 } from "lucide-react";
 import type { Source } from "@/types/source";
+import {
+  getSourceConfidence,
+  formatConfidenceTooltip,
+  getVotingSortValue,
+  compareVotingRank,
+} from "@/lib/source-confidence";
+import { cn } from "@/lib/utils";
 
 interface SourceTableProps {
   sources: Source[];
@@ -83,6 +90,46 @@ function SortableHeader({
         <ArrowUpDown className="ml-1 h-3 w-3 opacity-50" />
       )}
     </Button>
+  );
+}
+
+function CertaintyCell({ source }: { source: Source }) {
+  const info = getSourceConfidence(source);
+
+  if (info.confidence === null) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+
+  const confidence = `${(info.confidence * 100).toFixed(0)}%`;
+
+  // Without voting there is no agreement to report, so confidence is all there is.
+  if (!info.votingEnabled || info.splitDecisions === null) {
+    return (
+      <span className="text-sm tabular-nums text-muted-foreground" title={formatConfidenceTooltip(info)}>
+        {confidence}
+      </span>
+    );
+  }
+
+  const splits = info.splitDecisions;
+
+  return (
+    <div className="flex items-center gap-2" title={formatConfidenceTooltip(info)}>
+      <Badge
+        variant="secondary"
+        className={cn(
+          "text-xs px-1.5 py-0 font-normal shrink-0 tabular-nums",
+          splits === 0
+            ? "bg-green-100 text-green-700"
+            : splits <= 2
+              ? "bg-amber-100 text-amber-700"
+              : "bg-red-100 text-red-700",
+        )}
+      >
+        {splits === 0 ? "unanimous" : `${splits} split`}
+      </Badge>
+      <span className="text-xs tabular-nums text-muted-foreground">{confidence}</span>
+    </div>
   );
 }
 
@@ -185,6 +232,16 @@ export function SourceTable({
             {(getValue() as string) || "—"}
           </span>
         ),
+      },
+      {
+        id: "certainty",
+        accessorFn: (row) => getVotingSortValue(getSourceConfidence(row)),
+        header: ({ column }) => <SortableHeader column={column}>Certainty</SortableHeader>,
+        cell: ({ row }) => <CertaintyCell source={row.original} />,
+        // Ascending puts the least agreement — the most contested sources — first.
+        sortingFn: (a, b) =>
+          compareVotingRank(getSourceConfidence(a.original), getSourceConfidence(b.original)),
+        sortUndefined: "last",
       },
       {
         id: "status",

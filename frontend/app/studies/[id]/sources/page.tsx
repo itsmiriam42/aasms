@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { StudyLayout } from "@/components/layout/study-layout";
 import { Input } from "@/components/ui/input";
-import { Plus, Pencil, Trash2, CheckCircle2, Zap, Download, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckCircle2, Zap, Download, Search, Users } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -39,6 +39,9 @@ export default function SourcesPage() {
     filteredSources,
     searchQuery,
     setSearchQuery,
+    contestedOnly,
+    setContestedOnly,
+    contestedCount,
     sorting,
     setSorting,
     counts,
@@ -326,15 +329,30 @@ export default function SourcesPage() {
                 )}
               </div>
 
-              {/* Search */}
-              <div className="relative mb-4">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by title or author..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
+              {/* Search + contested filter */}
+              <div className="flex gap-2 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by title or author..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <Button
+                  variant={contestedOnly ? "default" : "outline"}
+                  onClick={() => setContestedOnly(!contestedOnly)}
+                  disabled={contestedCount === 0 && !contestedOnly}
+                  className="shrink-0"
+                  title="Show only sources where the LLMs disagreed on at least one criterion"
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Split votes only
+                  <Badge variant="secondary" className="ml-2 tabular-nums">
+                    {contestedCount}
+                  </Badge>
+                </Button>
               </div>
 
               {/* Import Review Mode Banner */}
