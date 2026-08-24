@@ -8,7 +8,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { StudyLayout } from "@/components/layout/study-layout";
 import { Input } from "@/components/ui/input";
-import { Plus, Pencil, Trash2, CheckCircle2, Zap, Download, Search, Users } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  Zap,
+  Download,
+  Search,
+  Users,
+  X,
+} from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -19,7 +29,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useSourcesPage } from "@/hooks/use-sources-page";
+import { isYearRangeActive } from "@/lib/source-year-filter";
 import { SourceTable } from "@/components/source/source-table";
 import {
   DeleteSourceDialog,
@@ -27,6 +45,8 @@ import {
 } from "@/components/source/delete-source-dialogs";
 import { BatchProgressModal } from "@/components/source/batch-progress-modal";
 import { toast } from "sonner";
+
+const ANY_YEAR = "__any__";
 
 export default function SourcesPage() {
   const queryClient = useQueryClient();
@@ -42,6 +62,11 @@ export default function SourcesPage() {
     contestedOnly,
     setContestedOnly,
     contestedCount,
+    yearOptions,
+    yearRange,
+    setYearFrom,
+    setYearTo,
+    clearYearFilter,
     sorting,
     setSorting,
     counts,
@@ -116,6 +141,11 @@ export default function SourcesPage() {
       setIsExporting(false);
     }
   };
+
+  const numericYearOptions = yearOptions.filter(
+    (option): option is { year: number; count: number } => option.year !== null,
+  );
+
 
   const getSourceUrl = (sourceId: string) => {
     const params = new URLSearchParams();
@@ -329,9 +359,9 @@ export default function SourcesPage() {
                 )}
               </div>
 
-              {/* Search + contested filter */}
-              <div className="flex gap-2 mb-4">
-                <div className="relative flex-1">
+              {/* Search + year range and split-vote filters */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <div className="relative flex-1 min-w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search by title or author..."
@@ -339,6 +369,54 @@ export default function SourcesPage() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
                   />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Years</span>
+                  <Select
+                    value={yearRange.from === null ? ANY_YEAR : String(yearRange.from)}
+                    onValueChange={(v) => setYearFrom(v === ANY_YEAR ? null : Number(v))}
+                  >
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue placeholder="From" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ANY_YEAR}>Earliest</SelectItem>
+                      {numericYearOptions.map((option) => (
+                        <SelectItem key={option.year} value={String(option.year)}>
+                          <span className="tabular-nums">{option.year}</span>
+                          <span className="w-10 text-right text-xs text-muted-foreground tabular-nums">
+                            {option.count}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm text-muted-foreground">–</span>
+                  <Select
+                    value={yearRange.to === null ? ANY_YEAR : String(yearRange.to)}
+                    onValueChange={(v) => setYearTo(v === ANY_YEAR ? null : Number(v))}
+                  >
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue placeholder="To" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ANY_YEAR}>Latest</SelectItem>
+                      {numericYearOptions.map((option) => (
+                        <SelectItem key={option.year} value={String(option.year)}>
+                          <span className="tabular-nums">{option.year}</span>
+                          <span className="w-10 text-right text-xs text-muted-foreground tabular-nums">
+                            {option.count}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {isYearRangeActive(yearRange) && (
+                    <Button variant="ghost" size="sm" onClick={clearYearFilter}>
+                      <X className="h-4 w-4 mr-1" />
+                      Clear
+                    </Button>
+                  )}
                 </div>
                 <Button
                   variant={contestedOnly ? "default" : "outline"}

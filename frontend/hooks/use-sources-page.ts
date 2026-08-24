@@ -7,6 +7,12 @@ import { type SortingState } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Source } from "@/types/source";
 import { getSourceConfidence, isContested } from "@/lib/source-confidence";
+import {
+  buildYearOptions,
+  filterSourcesByYearRange,
+  EMPTY_YEAR_RANGE,
+  type YearRange,
+} from "@/lib/source-year-filter";
 
 interface Study {
   id: string;
@@ -35,6 +41,7 @@ export function useSourcesPage() {
   const [tab, setTab] = useState<string>(filterParam || "all");
   const [searchQuery, setSearchQuery] = useState("");
   const [contestedOnly, setContestedOnly] = useState(false);
+  const [yearRange, setYearRange] = useState<YearRange>(EMPTY_YEAR_RANGE);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [suggestions, setSuggestions] = useState<Record<string, any>>({});
   const [loadingMap, setLoadingMap] = useState<Record<string, boolean>>({});
@@ -79,6 +86,7 @@ export function useSourcesPage() {
   useEffect(() => {
     setSearchQuery("");
     setContestedOnly(false);
+    setYearRange(EMPTY_YEAR_RANGE);
   }, [tab]);
 
   // Filter logic
@@ -136,15 +144,29 @@ export function useSourcesPage() {
     );
   }, [filteredSources, searchQuery]);
 
-  // Sources where the LLMs split on at least one criterion — the ones the
-  // ensemble could not settle on its own. Counted before the toggle is applied
-  // so the badge keeps showing how many there are while filtering.
-  const contestedSources = useMemo(
-    () => searchedSources.filter((s) => isContested(getSourceConfidence(s))),
-    [searchedSources],
+  // Per-year counts reflect the current tab + search, but not the year range
+  // itself, so every year stays selectable while a range is applied.
+  const yearOptions = useMemo(() => buildYearOptions(searchedSources), [searchedSources]);
+
+  const yearFilteredSources = useMemo(
+    () => filterSourcesByYearRange(searchedSources, yearRange),
+    [searchedSources, yearRange],
   );
 
-  const visibleSources = contestedOnly ? contestedSources : searchedSources;
+  // Sources where the LLMs split on at least one criterion — the ones the
+  // ensemble could not settle on its own. Counted after the year range but
+  // before the toggle, so the badge keeps showing how many there are while
+  // filtering.
+  const contestedSources = useMemo(
+    () => yearFilteredSources.filter((s) => isContested(getSourceConfidence(s))),
+    [yearFilteredSources],
+  );
+
+  const visibleSources = contestedOnly ? contestedSources : yearFilteredSources;
+
+  const setYearFrom = (from: number | null) => setYearRange((prev) => ({ ...prev, from }));
+  const setYearTo = (to: number | null) => setYearRange((prev) => ({ ...prev, to }));
+  const clearYearFilter = () => setYearRange(EMPTY_YEAR_RANGE);
 
   // Store source IDs in sessionStorage for prev/next navigation
   const navKey = `sources-nav-${studyId}-${tab}`;
@@ -274,6 +296,11 @@ export function useSourcesPage() {
     contestedOnly,
     setContestedOnly,
     contestedCount: contestedSources.length,
+    yearOptions,
+    yearRange,
+    setYearFrom,
+    setYearTo,
+    clearYearFilter,
     sorting,
     setSorting,
     navKey,
