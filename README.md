@@ -148,6 +148,8 @@ ANTHROPIC_API_KEY="your-anthropic-key-here"
 OPENAI_API_KEY="your-openai-key-here"
 GOOGLE_API_KEY="your-google-key-here"
 LLM_PROVIDER="claude"
+# Required for Unpaywall lookups when fetching open-access PDFs
+OA_CONTACT_EMAIL="you@example.org"
 EOF
 
 # Start the service
@@ -190,6 +192,10 @@ Python service runs on **http://localhost:8000**
 | `LLM_PROVIDER` | LLM to use: `claude`, `openai`, `gemini`, or `auto` | `claude` |
 | `GEMINI_MODEL` | Gemini model name | `gemini-1.5-pro-latest` |
 | `GEMINI_SMALL_MODEL` | Gemini small model name | `gemini-1.5-flash-latest` |
+| `OA_CONTACT_EMAIL` | Contact email for Unpaywall and the OpenAlex polite pool. Without it, open-access PDF retrieval skips Unpaywall | - |
+| `PDF_RETRIEVAL_TIMEOUT_SECONDS` | Timeout per open-access API call and PDF download | `30` |
+| `PDF_RETRIEVAL_MAX_MB` | Largest PDF that will be downloaded | `50` |
+| `SEMANTIC_SCHOLAR_API_KEY` | Optional key from https://www.semanticscholar.org/product/api. Without it, Semantic Scholar throttles batch lookups with HTTP 429 | - |
 
 ---
 

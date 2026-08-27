@@ -24,6 +24,8 @@ def test_routes_mounted():
         "/api/import/check-relevance",
         "/api/process-import",
         "/api/import/process-batch-stream",
+        "/api/retrieve-pdf",
+        "/api/resolve-pdf-url",
     ]
 
     for route in expected_routes:

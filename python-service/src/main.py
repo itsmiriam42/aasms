@@ -5,7 +5,16 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.routers import analysis, coding, export, imports, parsing, scraping, system
+from src.api.routers import (
+    analysis,
+    coding,
+    export,
+    imports,
+    parsing,
+    pdf_retrieval,
+    scraping,
+    system,
+)
 from src.core.config import settings
 
 # Configure global logging
@@ -41,6 +50,7 @@ app.include_router(imports.router, prefix="/api")
 app.include_router(system.router, prefix="/api")
 app.include_router(coding.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
+app.include_router(pdf_retrieval.router, prefix="/api")
 
 
 @app.get("/")

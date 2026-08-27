@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Zap,
   Download,
+  FileDown,
   Search,
   Users,
   X,
@@ -84,15 +85,33 @@ export default function SourcesPage() {
     bulkDeleteMutation,
     handleTabChange,
     handleReparse,
+    handleFetchPdf,
     applySuggestions,
     suggestions,
     loadingMap,
   } = useSourcesPage();
 
+  type BatchActionType = "analyze" | "classify" | "fetch-pdfs";
+
   const [batchModalState, setBatchModalState] = useState<{
     isOpen: boolean;
-    type: "analyze" | "classify" | null;
+    type: BatchActionType | null;
   }>({ isOpen: false, type: null });
+
+  const BATCH_ACTIONS: Record<BatchActionType, { title: string; url: string }> = {
+    analyze: {
+      title: "Screening Sources...",
+      url: `/api/studies/${studyId}/sources/batch-analyze`,
+    },
+    classify: {
+      title: "Classifying Sources...",
+      url: `/api/studies/${studyId}/sources/batch-classify`,
+    },
+    "fetch-pdfs": {
+      title: "Fetching Open-Access PDFs...",
+      url: `/api/studies/${studyId}/sources/batch-fetch-pdfs`,
+    },
+  };
 
   const [isExporting, setIsExporting] = useState(false);
   const handleExport = async (format: "bibtex" | "ris", filter: "included" | "all") => {
@@ -145,7 +164,6 @@ export default function SourcesPage() {
   const numericYearOptions = yearOptions.filter(
     (option): option is { year: number; count: number } => option.year !== null,
   );
-
 
   const getSourceUrl = (sourceId: string) => {
     const params = new URLSearchParams();
@@ -235,6 +253,19 @@ export default function SourcesPage() {
                       disabled={counts.included === 0}
                     >
                       <span>Classify All Included ({counts.included})</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() =>
+                        setBatchModalState({
+                          isOpen: true,
+                          type: "fetch-pdfs",
+                        })
+                      }
+                      disabled={counts.missing_pdf === 0}
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      <span>Fetch Open-Access PDFs ({counts.missing_pdf})</span>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -471,6 +502,7 @@ export default function SourcesPage() {
                     suggestions={suggestions}
                     loadingMap={loadingMap}
                     onReparse={handleReparse}
+                    onFetchPdf={handleFetchPdf}
                     onApplySuggestions={applySuggestions}
                     getSourceUrl={getSourceUrl}
                     sorting={sorting}
@@ -507,16 +539,11 @@ export default function SourcesPage() {
             type: open ? batchModalState.type : null,
           })
         }
-        title={
-          batchModalState.type === "analyze" ? "Screening Sources..." : "Classifying Sources..."
-        }
-        apiUrl={
-          batchModalState.type === "analyze"
-            ? `/api/studies/${studyId}/sources/batch-analyze`
-            : `/api/studies/${studyId}/sources/batch-classify`
-        }
+        title={batchModalState.type ? BATCH_ACTIONS[batchModalState.type].title : ""}
+        apiUrl={batchModalState.type ? BATCH_ACTIONS[batchModalState.type].url : ""}
         onComplete={() => {
-          setBatchModalState({ isOpen: false, type: null });
+          // Leave the dialog open so the run's summary is actually readable —
+          // closing on completion made a no-op batch look like a crash.
           queryClient.invalidateQueries({ queryKey: ["study", studyId] });
         }}
       />

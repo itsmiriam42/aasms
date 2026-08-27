@@ -28,6 +28,7 @@ interface BatchProgressEvent {
     errors: number;
     included?: number;
     excluded?: number;
+    skipped?: number;
   };
 }
 
@@ -59,6 +60,15 @@ export function BatchProgressModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [summary, setSummary] = useState<BatchProgressEvent["summary"] | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Kept in a ref so a re-created callback never restarts the batch: onComplete
+  // invalidates queries, which re-renders the parent, which would otherwise
+  // retrigger the effect and start the whole run again, forever.
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   // Auto-scroll logs to bottom
   useEffect(() => {
@@ -68,6 +78,9 @@ export function BatchProgressModal({
   useEffect(() => {
     if (!isOpen || !apiUrl) return;
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const startBatch = async () => {
       setIsProcessing(true);
       setProgress(0);
@@ -76,7 +89,7 @@ export function BatchProgressModal({
       setSummary(null);
 
       try {
-        const response = await fetch(apiUrl, { method: "POST" });
+        const response = await fetch(apiUrl, { method: "POST", signal: controller.signal });
 
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
@@ -132,7 +145,7 @@ export function BatchProgressModal({
                   } else if (data.type === "complete") {
                     setSummary(data.summary || null);
                     setIsProcessing(false);
-                    onComplete?.();
+                    onCompleteRef.current?.();
                   }
                 } catch (e) {
                   console.error("Failed to parse SSE event:", e);
@@ -152,7 +165,7 @@ export function BatchProgressModal({
                 if (data.type === "complete") {
                   setSummary(data.summary || null);
                   setIsProcessing(false);
-                  onComplete?.();
+                  onCompleteRef.current?.();
                 }
               } catch (e) {
                 console.error("Failed to parse final SSE event:", e);
@@ -161,8 +174,20 @@ export function BatchProgressModal({
           }
         }
       } catch (error) {
-        console.error("Batch operation failed:", error);
         setIsProcessing(false);
+        if (error instanceof DOMException && error.name === "AbortError") {
+          setLogs((prev) => [
+            ...prev,
+            {
+              sourceId: "cancelled",
+              sourceTitle: "Batch Operation",
+              status: "skipped",
+              message: "Cancelled — already processed sources keep their results",
+            },
+          ]);
+          return;
+        }
+        console.error("Batch operation failed:", error);
         setLogs((prev) => [
           ...prev,
           {
@@ -176,12 +201,18 @@ export function BatchProgressModal({
     };
 
     startBatch();
-  }, [isOpen, apiUrl, onComplete]);
+
+    return () => controller.abort();
+  }, [isOpen, apiUrl]);
+
+  const handleCancel = () => {
+    abortRef.current?.abort();
+    setIsProcessing(false);
+  };
 
   const handleClose = () => {
-    if (!isProcessing) {
-      onOpenChange(false);
-    }
+    abortRef.current?.abort();
+    onOpenChange(false);
   };
 
   const getStatusIcon = (status: "success" | "error" | "skipped") => {
@@ -214,7 +245,13 @@ export function BatchProgressModal({
             {isProcessing && <Loader2 className="h-5 w-5 animate-spin text-blue-600" />}
             {title}
           </DialogTitle>
-          <DialogDescription>Processing sources...</DialogDescription>
+          <DialogDescription>
+            {isProcessing
+              ? "Processing sources..."
+              : summary?.total === 0
+                ? "Nothing to do — no sources matched this action."
+                : "Finished."}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col gap-4">
@@ -283,19 +320,24 @@ export function BatchProgressModal({
                     <span className="font-medium">{summary.excluded}</span> excluded
                   </div>
                 )}
+                {summary.skipped !== undefined && summary.skipped > 0 && (
+                  <div className="text-sm">
+                    <span className="font-medium">{summary.skipped}</span> skipped
+                  </div>
+                )}
               </div>
             </div>
           )}
         </div>
 
         <DialogFooter>
-          <Button
-            onClick={handleClose}
-            disabled={isProcessing}
-            variant={isProcessing ? "outline" : "default"}
-          >
-            {isProcessing ? "Processing..." : "Close"}
-          </Button>
+          {isProcessing ? (
+            <Button onClick={handleCancel} variant="outline">
+              Cancel
+            </Button>
+          ) : (
+            <Button onClick={handleClose}>Close</Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

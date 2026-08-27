@@ -26,6 +26,7 @@ import { Loader2, Info, CheckCircle2, FileText, ArrowRight, ArrowLeft } from "lu
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useImport } from "@/context/import-context";
 
 interface BulkUploadFormProps {
@@ -52,6 +53,7 @@ export function BulkUploadForm({ studyId, onSuccess }: BulkUploadFormProps) {
   const [step, setStep] = useState<UploadStep>("upload");
   const [previewData, setPreviewData] = useState<ParsedSourcePreview[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchPdfs, setFetchPdfs] = useState(true);
 
   // Sync local step with global status if we are in this study context
   // This helps when navigating back to this page while import is running
@@ -100,7 +102,7 @@ export function BulkUploadForm({ studyId, onSuccess }: BulkUploadFormProps) {
     formData.append("databaseSource", databaseSource);
 
     // Delegate to global context
-    await startImport(studyId, formData);
+    await startImport(studyId, formData, { fetchPdfs });
   };
 
   // If we are 'importing' locally but global status becomes complete, update local state
@@ -130,7 +132,14 @@ export function BulkUploadForm({ studyId, onSuccess }: BulkUploadFormProps) {
   const effectivelyComplete = !isImporting && step === "importing" && status === "complete";
 
   // Calculate stats for UI
-  const percent = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0;
+  const percent =
+    status === "fetching_pdfs"
+      ? progress.pdfsTotal > 0
+        ? (progress.pdfsProcessed / progress.pdfsTotal) * 100
+        : 0
+      : progress.total > 0
+        ? (progress.processed / progress.total) * 100
+        : 0;
   const remaining = progress.total - progress.processed;
 
   return (
@@ -204,6 +213,25 @@ export function BulkUploadForm({ studyId, onSuccess }: BulkUploadFormProps) {
               </AlertDescription>
             </Alert>
 
+            <div className="flex items-start gap-3 rounded-md border p-3">
+              <Checkbox
+                id="fetch-pdfs"
+                checked={fetchPdfs}
+                onCheckedChange={(checked) => setFetchPdfs(!!checked)}
+                className="mt-0.5"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="fetch-pdfs" className="cursor-pointer">
+                  Fetch open-access PDFs automatically
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  After screening, look up each source on Unpaywall, OpenAlex, Semantic Scholar and
+                  arXiv and store any freely available PDF. Paywalled papers stay in &quot;Needs
+                  PDF&quot; for manual upload.
+                </p>
+              </div>
+            </div>
+
             <div className="border rounded-md">
               <ScrollArea className="h-[300px]">
                 <div className="divide-y">
@@ -246,9 +274,15 @@ export function BulkUploadForm({ studyId, onSuccess }: BulkUploadFormProps) {
             </div>
 
             <div className="text-center space-y-2 w-full max-w-md">
-              <h3 className="text-lg font-medium">Checking relevance...</h3>
+              <h3 className="text-lg font-medium">
+                {status === "fetching_pdfs"
+                  ? "Fetching open-access PDFs..."
+                  : "Checking relevance..."}
+              </h3>
               <p className="text-sm text-muted-foreground">
-                AI is analyzing title and abstracts.
+                {status === "fetching_pdfs"
+                  ? `Retrieved ${progress.pdfsRetrieved} of ${progress.pdfsProcessed} checked (${progress.pdfsTotal} total).`
+                  : "AI is analyzing title and abstracts."}
                 <br />
                 <span className="text-xs opacity-75">
                   You can leave this page, the process will continue in the background.
@@ -309,6 +343,12 @@ export function BulkUploadForm({ studyId, onSuccess }: BulkUploadFormProps) {
                   <span className="text-xs">Excluded</span>
                 </div>
               </div>
+
+              {progress.pdfsTotal > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Retrieved {progress.pdfsRetrieved} of {progress.pdfsTotal} PDFs via open access.
+                </p>
+              )}
             </div>
           </div>
         )}

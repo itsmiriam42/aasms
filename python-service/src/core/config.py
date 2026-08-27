@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     max_tokens: int = 8000
     temperature: float = 0.1
 
+    # Open-access PDF retrieval
+    # Unpaywall requires a contact email; OpenAlex uses it for its polite pool.
+    oa_contact_email: str = ""
+    # Optional; without it Semantic Scholar shares one throttled pool with
+    # every anonymous caller and answers 429 for most batch lookups.
+    semantic_scholar_api_key: str = ""
+    pdf_retrieval_timeout_seconds: float = 30.0
+    pdf_retrieval_max_mb: int = 50
+
     # E2E test mode — uses FakeProvider instead of real LLM APIs
     e2e_test_mode: bool = False
 

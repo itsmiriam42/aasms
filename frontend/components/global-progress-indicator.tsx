@@ -32,10 +32,20 @@ export function GlobalProgressIndicator() {
     }
   };
 
-  const percent = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0;
+  const isFetchingPdfs = status === "fetching_pdfs";
+
+  const percent = isFetchingPdfs
+    ? progress.pdfsTotal > 0
+      ? (progress.pdfsProcessed / progress.pdfsTotal) * 100
+      : 0
+    : progress.total > 0
+      ? (progress.processed / progress.total) * 100
+      : 0;
 
   // Calculate remaining
-  const remaining = progress.total - progress.processed;
+  const remaining = isFetchingPdfs
+    ? progress.pdfsTotal - progress.pdfsProcessed
+    : progress.total - progress.processed;
 
   return (
     <div
@@ -56,7 +66,9 @@ export function GlobalProgressIndicator() {
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
             )}
             <div className="flex flex-col">
-              <span className="text-xs font-semibold">Bulk Import</span>
+              <span className="text-xs font-semibold">
+                {isFetchingPdfs ? "Fetching PDFs" : "Bulk Import"}
+              </span>
               <span className="text-[10px] text-muted-foreground">
                 {status === "complete" ? "Done" : `${Math.round(percent)}%`}
               </span>
@@ -66,13 +78,14 @@ export function GlobalProgressIndicator() {
           <div className="p-4 space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold flex items-center gap-2">
-                {status === "importing" && (
+                {(status === "importing" || isFetchingPdfs) && (
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 )}
                 {status === "complete" && <CheckCircle2 className="h-4 w-4 text-green-500" />}
                 {status === "error" && <XCircle className="h-4 w-4 text-destructive" />}
 
                 {status === "importing" && "Importing Sources..."}
+                {isFetchingPdfs && "Fetching Open-Access PDFs..."}
                 {status === "complete" && "Import Complete"}
                 {status === "error" && "Import Failed"}
               </h4>
@@ -92,19 +105,28 @@ export function GlobalProgressIndicator() {
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Progress</span>
                 <span>
-                  {progress.processed} / {progress.total}
+                  {isFetchingPdfs
+                    ? `${progress.pdfsProcessed} / ${progress.pdfsTotal}`
+                    : `${progress.processed} / ${progress.total}`}
                 </span>
               </div>
               <Progress value={percent} className="h-2" />
             </div>
 
             <div className="grid grid-cols-3 gap-2 py-2">
-              <div className="flex flex-col items-center bg-muted/50 p-2 rounded-md">
-                <span className="text-xs text-muted-foreground">Included</span>
-                <span className="font-bold text-green-600 flex items-center gap-1">
-                  {progress.included}
-                </span>
-              </div>
+              {isFetchingPdfs ? (
+                <div className="flex flex-col items-center bg-muted/50 p-2 rounded-md">
+                  <span className="text-xs text-muted-foreground">PDFs found</span>
+                  <span className="font-bold text-green-600">{progress.pdfsRetrieved}</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center bg-muted/50 p-2 rounded-md">
+                  <span className="text-xs text-muted-foreground">Included</span>
+                  <span className="font-bold text-green-600 flex items-center gap-1">
+                    {progress.included}
+                  </span>
+                </div>
+              )}
               <div className="flex flex-col items-center bg-muted/50 p-2 rounded-md">
                 <span className="text-xs text-muted-foreground">Excluded</span>
                 <span className="font-bold text-muted-foreground flex items-center gap-1">
@@ -123,12 +145,13 @@ export function GlobalProgressIndicator() {
                   Dismiss
                 </Button>
               )}
-              {(status === "complete" || status === "importing") && activeStudyId && (
-                <Button size="sm" onClick={handleViewResults}>
-                  View Results
-                  <ExternalLink className="ml-1 h-3 w-3" />
-                </Button>
-              )}
+              {(status === "complete" || status === "importing" || isFetchingPdfs) &&
+                activeStudyId && (
+                  <Button size="sm" onClick={handleViewResults}>
+                    View Results
+                    <ExternalLink className="ml-1 h-3 w-3" />
+                  </Button>
+                )}
             </div>
           </div>
         )}

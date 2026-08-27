@@ -15,7 +15,20 @@ export interface SourceMetadata {
   year?: number | string;
   pdf_link?: string;
   database_specific?: Record<string, unknown>;
+  pdfRetrieval?: PdfRetrievalRecord;
   [key: string]: unknown;
+}
+
+/** Outcome of the last open-access PDF lookup for a source. */
+export interface PdfRetrievalRecord {
+  status: "retrieved" | "not_found" | "error";
+  provider?: string;
+  url?: string;
+  license?: string;
+  reason?: string;
+  providersTried?: string[];
+  openAccessUrls?: string[];
+  attemptedAt: string;
 }
 
 /**

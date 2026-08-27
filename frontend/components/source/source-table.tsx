@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import {
   useReactTable,
@@ -38,9 +38,15 @@ import {
   ChevronsLeft,
   ChevronsRight,
   RefreshCw,
+  FileDown,
+  ExternalLink,
+  Upload,
+  Loader2,
   Check,
   Trash2,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { needsPdfAction, openAccessUrl } from "@/lib/source-pdf-actions";
 import type { Source } from "@/types/source";
 import {
   getSourceConfidence,
@@ -49,6 +55,32 @@ import {
   compareVotingRank,
 } from "@/lib/source-confidence";
 import { cn } from "@/lib/utils";
+
+/**
+ * A compact icon button with the wording moved into a tooltip.
+ *
+ * Three labelled buttons no longer fit the actions column, and squeezing them
+ * clipped the row; icons keep every action reachable at a fixed width.
+ */
+function IconAction({ label, children }: { label: string; children: React.ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          asChild
+          variant="outline"
+          size="icon"
+          className="h-7 w-7 shrink-0 disabled:opacity-50"
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-64">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 interface SourceTableProps {
   sources: Source[];
@@ -60,19 +92,14 @@ interface SourceTableProps {
   suggestions: Record<string, any>;
   loadingMap: Record<string, boolean>;
   onReparse: (id: string) => void;
+  onFetchPdf: (id: string) => void;
   onApplySuggestions: (id: string) => void;
   getSourceUrl: (id: string) => string;
   sorting: SortingState;
   onSortingChange: (sorting: SortingState) => void;
 }
 
-function SortableHeader({
-  column,
-  children,
-}: {
-  column: any;
-  children: React.ReactNode;
-}) {
+function SortableHeader({ column, children }: { column: any; children: React.ReactNode }) {
   const sorted = column.getIsSorted();
   return (
     <Button
@@ -105,7 +132,10 @@ function CertaintyCell({ source }: { source: Source }) {
   // Without voting there is no agreement to report, so confidence is all there is.
   if (!info.votingEnabled || info.splitDecisions === null) {
     return (
-      <span className="text-sm tabular-nums text-muted-foreground" title={formatConfidenceTooltip(info)}>
+      <span
+        className="text-sm tabular-nums text-muted-foreground"
+        title={formatConfidenceTooltip(info)}
+      >
         {confidence}
       </span>
     );
@@ -136,6 +166,8 @@ function CertaintyCell({ source }: { source: Source }) {
 // The trailing column is left unsized so it soaks up whatever width is left
 // over, keeping the table flush with its container at any column size.
 const LAST_COLUMN_ID = "actions";
+// Fits three icon buttons plus delete without the row squeezing them away.
+const ACTIONS_MIN_WIDTH = 150;
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-gray-100 text-gray-700",
@@ -164,6 +196,7 @@ export function SourceTable({
   suggestions,
   loadingMap,
   onReparse,
+  onFetchPdf,
   onApplySuggestions,
   getSourceUrl,
   sorting,
@@ -216,7 +249,10 @@ export function SourceTable({
         accessorFn: (row) => row.authors?.join(", ") || "",
         header: ({ column }) => <SortableHeader column={column}>Authors</SortableHeader>,
         cell: ({ getValue }) => (
-          <span className="truncate block text-sm text-muted-foreground" title={getValue() as string}>
+          <span
+            className="truncate block text-sm text-muted-foreground"
+            title={getValue() as string}
+          >
             {(getValue() as string) || "—"}
           </span>
         ),
@@ -237,7 +273,10 @@ export function SourceTable({
         size: 170,
         header: ({ column }) => <SortableHeader column={column}>Venue</SortableHeader>,
         cell: ({ getValue }) => (
-          <span className="truncate block text-sm text-muted-foreground" title={(getValue() as string) || ""}>
+          <span
+            className="truncate block text-sm text-muted-foreground"
+            title={(getValue() as string) || ""}
+          >
             {(getValue() as string) || "—"}
           </span>
         ),
@@ -261,7 +300,10 @@ export function SourceTable({
         cell: ({ row }) => {
           const status = getDisplayStatus(row.original);
           return (
-            <Badge className={STATUS_COLORS[status] || "bg-gray-100 text-gray-700"} variant="secondary">
+            <Badge
+              className={STATUS_COLORS[status] || "bg-gray-100 text-gray-700"}
+              variant="secondary"
+            >
               {status}
             </Badge>
           );
@@ -302,10 +344,40 @@ export function SourceTable({
                   )}
                 </>
               )}
-              {tab === "needs_pdf" && !isEditMode && (
-                <Button asChild size="sm" className="h-7 text-xs">
-                  <Link href={getSourceUrl(source.id)}>Upload PDF</Link>
-                </Button>
+              {!isEditMode && needsPdfAction(source) && (
+                <>
+                  {openAccessUrl(source) && (
+                    <IconAction label="Open the free copy - the publisher blocks automated downloads, so save it yourself">
+                      <a
+                        href={openAccessUrl(source)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Open open-access copy"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </IconAction>
+                  )}
+                  <IconAction label="Search Unpaywall, OpenAlex, Semantic Scholar and arXiv for a free copy">
+                    <button
+                      type="button"
+                      onClick={() => onFetchPdf(source.id)}
+                      disabled={isLoading}
+                      aria-label="Find PDF"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <FileDown className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </IconAction>
+                  <IconAction label="Upload the PDF yourself">
+                    <Link href={getSourceUrl(source.id)} aria-label="Upload PDF">
+                      <Upload className="h-3.5 w-3.5" />
+                    </Link>
+                  </IconAction>
+                </>
               )}
               {!isEditMode && (
                 <Button
@@ -325,7 +397,19 @@ export function SourceTable({
     );
 
     return cols;
-  }, [isEditMode, selectedIds, onToggleSelection, tab, getSourceUrl, suggestions, loadingMap, onReparse, onApplySuggestions, onDelete]);
+  }, [
+    isEditMode,
+    selectedIds,
+    onToggleSelection,
+    tab,
+    getSourceUrl,
+    suggestions,
+    loadingMap,
+    onReparse,
+    onFetchPdf,
+    onApplySuggestions,
+    onDelete,
+  ]);
 
   const table = useReactTable({
     data: sources,
@@ -368,10 +452,13 @@ export function SourceTable({
                 {headerGroup.headers.map((header) => (
                   <TableHead
                     key={header.id}
-                    className="relative py-2 px-3 whitespace-nowrap overflow-hidden"
+                    className={cn(
+                      "relative py-2 px-3 whitespace-nowrap",
+                      header.column.id === LAST_COLUMN_ID ? "" : "overflow-hidden",
+                    )}
                     style={
                       header.column.id === LAST_COLUMN_ID
-                        ? undefined
+                        ? { minWidth: ACTIONS_MIN_WIDTH }
                         : { width: header.getSize() }
                     }
                   >
@@ -405,10 +492,13 @@ export function SourceTable({
                 {row.getVisibleCells().map((cell) => (
                   <TableCell
                     key={cell.id}
-                    className="py-2 px-3 overflow-hidden"
+                    className={cn(
+                      "py-2 px-3",
+                      cell.column.id === LAST_COLUMN_ID ? "whitespace-nowrap" : "overflow-hidden",
+                    )}
                     style={
                       cell.column.id === LAST_COLUMN_ID
-                        ? undefined
+                        ? { minWidth: ACTIONS_MIN_WIDTH }
                         : { width: cell.column.getSize() }
                     }
                   >
@@ -448,19 +538,39 @@ export function SourceTable({
               </Select>
             </div>
             <div className="flex items-center gap-1">
-              <Button variant="outline" size="sm" onClick={() => table.setPageIndex(0)} disabled={!table.getCanPreviousPage()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.setPageIndex(0)}
+                disabled={!table.getCanPreviousPage()}
+              >
                 <ChevronsLeft className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="text-sm px-2">
                 Page {pageIndex + 1} of {pageCount}
               </span>
-              <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={() => table.setPageIndex(pageCount - 1)} disabled={!table.getCanNextPage()}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.setPageIndex(pageCount - 1)}
+                disabled={!table.getCanNextPage()}
+              >
                 <ChevronsRight className="h-4 w-4" />
               </Button>
             </div>

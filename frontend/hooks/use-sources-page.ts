@@ -139,8 +139,7 @@ export function useSourcesPage() {
     const q = searchQuery.toLowerCase();
     return filteredSources.filter(
       (s) =>
-        s.title.toLowerCase().includes(q) ||
-        s.authors?.some((a) => a.toLowerCase().includes(q)),
+        s.title.toLowerCase().includes(q) || s.authors?.some((a) => a.toLowerCase().includes(q)),
     );
   }, [filteredSources, searchQuery]);
 
@@ -236,6 +235,34 @@ export function useSourcesPage() {
     }
   };
 
+  /** Retry the open-access PDF lookup for one source. */
+  const handleFetchPdf = async (sourceId: string) => {
+    setLoadingMap((m) => ({ ...m, [sourceId]: true }));
+    try {
+      const res = await fetch(`/api/studies/${studyId}/sources/${sourceId}/fetch-pdf`, {
+        method: "POST",
+      });
+      const payload = await res.json().catch(() => ({}));
+
+      if (res.ok && payload.status === "success") {
+        queryClient.invalidateQueries({ queryKey: ["study", studyId] });
+        toast.success("PDF retrieved", { description: payload.message });
+      } else if (res.ok && payload.status === "skipped") {
+        // Paywalled papers are the norm — say so without crying error.
+        toast.info("No open-access copy", { description: payload.message });
+      } else {
+        toast.error("PDF retrieval failed", {
+          description: payload.message || payload.error || "Unknown error",
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("PDF retrieval failed");
+    } finally {
+      setLoadingMap((m) => ({ ...m, [sourceId]: false }));
+    }
+  };
+
   const applySuggestions = async (sourceId: string) => {
     const suggestion = suggestions[sourceId];
     if (!suggestion) return;
@@ -311,6 +338,10 @@ export function useSourcesPage() {
             ? study.sources.filter((s) => s.importBatchId === batchIdParam).length
             : 0,
           needs_pdf: study.sources.filter((s) => s.needsPdf).length,
+          // Matches what the batch actually runs on: excluded sources are skipped
+          missing_pdf: study.sources.filter(
+            (s) => !s.hasPdf && s.finalDecision !== "EXCLUDE" && s.status !== "EXCLUDED",
+          ).length,
           pending: study.sources.filter(
             (s) =>
               (s.status === "PENDING" ||
@@ -338,7 +369,16 @@ export function useSourcesPage() {
             (s) => s.finalDecision === "EXCLUDE" || s.status === "EXCLUDED",
           ).length,
         }
-      : { all: 0, new_import: 0, needs_pdf: 0, pending: 0, analyzing: 0, included: 0, excluded: 0 },
+      : {
+          all: 0,
+          new_import: 0,
+          needs_pdf: 0,
+          missing_pdf: 0,
+          pending: 0,
+          analyzing: 0,
+          included: 0,
+          excluded: 0,
+        },
     batchIdParam,
     isEditMode,
     setIsEditMode,
@@ -353,6 +393,7 @@ export function useSourcesPage() {
     bulkDeleteMutation,
     handleTabChange,
     handleReparse,
+    handleFetchPdf,
     applySuggestions,
     suggestions,
     loadingMap,
