@@ -408,6 +408,7 @@ async def analyze_inclusion_text(request: InclusionAnalysisTextRequest):
         "abstract": request.source_content.get("abstract") or "",
         "venue": request.source_content.get("venue") or "",
         "doi": request.source_content.get("doi") or "",
+        "publication_date": request.source_content.get("publication_date") or "",
         "content_excerpt": request.source_content.get("content_excerpt") or "",
     }
 

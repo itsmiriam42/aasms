@@ -53,7 +53,7 @@ export async function POST(
     }
 
     // Build payloads
-    const sourceContent = buildSourceContent(source, chosen);
+    const sourceContent = buildSourceContent(source, chosen, { includePublicationDate: true });
     const researchQuestions = source.study?.researchQuestions?.map((rq) => rq.question) || [];
     const inclusionCriteriaList =
       source.study?.parameters?.inclusionCriteria?.map((c) => c.criterion) || [];
