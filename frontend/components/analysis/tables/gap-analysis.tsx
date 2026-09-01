@@ -28,10 +28,16 @@ export function GapAnalysis({ title, data, isLoading }: GapAnalysisProps) {
 
     const lowCount = data.singleDimensionGaps.reduce((sum, facet) => sum + facet.gaps.length, 0);
 
+    const crossTabCount = (data.crossTabGaps ?? []).reduce(
+      (sum, pair) => sum + pair.gaps.length,
+      0,
+    );
+
     return {
       totalGaps,
       emptyCount,
       lowCount,
+      crossTabCount,
       facetsWithGaps: data.singleDimensionGaps.filter(
         (f) => f.gaps.length > 0 || f.empty.length > 0,
       ).length,
@@ -72,7 +78,7 @@ export function GapAnalysis({ title, data, isLoading }: GapAnalysisProps) {
     );
   }
 
-  const hasGaps = summary && summary.totalGaps > 0;
+  const hasGaps = summary && (summary.totalGaps > 0 || summary.crossTabCount > 0);
 
   return (
     <Card>
@@ -89,15 +95,21 @@ export function GapAnalysis({ title, data, isLoading }: GapAnalysisProps) {
             <AlertDescription>
               Found <strong>{summary.totalGaps}</strong> potential research gaps across{" "}
               <strong>{summary.facetsWithGaps}</strong> classification facets ({summary.emptyCount}{" "}
-              empty, {summary.lowCount} with ≤{data.threshold} sources).
+              empty, {summary.lowCount} with ≤{data.threshold} sources)
+              {summary.crossTabCount > 0 && (
+                <>
+                  , plus <strong>{summary.crossTabCount}</strong> two-dimensional gaps
+                </>
+              )}
+              .
             </AlertDescription>
           </Alert>
         ) : (
           <Alert>
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
-              No significant research gaps detected. All categories have more than {data.threshold}{" "}
-              sources.
+              No significant research gaps detected. All categories and category combinations have
+              more than {data.threshold} sources.
             </AlertDescription>
           </Alert>
         )}
@@ -190,16 +202,63 @@ export function GapAnalysis({ title, data, isLoading }: GapAnalysisProps) {
               interesting research gaps.
             </p>
             <div className="space-y-3">
-              {data.crossTabGaps.map((crossTab, idx) => (
-                <div key={idx} className="border rounded-lg p-4">
-                  <h4 className="font-medium mb-2">
-                    {crossTab.rowFacetName} × {crossTab.colFacetName}
-                  </h4>
-                  <div className="text-sm text-muted-foreground">
-                    {crossTab.gaps.length} sparse or empty combinations found
+              {data.crossTabGaps.map((crossTab, idx) => {
+                const emptyCells = crossTab.gaps.filter((cell) => cell.count === 0);
+                const sparseCells = crossTab.gaps.filter((cell) => cell.count > 0);
+
+                return (
+                  <div key={idx} className="border rounded-lg p-4 space-y-3">
+                    <h4 className="font-medium">
+                      {crossTab.rowFacetName} × {crossTab.colFacetName}
+                    </h4>
+                    <div className="text-sm text-muted-foreground">
+                      {emptyCells.length} empty and {sparseCells.length} sparse (≤{data.threshold})
+                      combinations
+                    </div>
+
+                    {emptyCells.length > 0 && (
+                      <div>
+                        <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
+                          <span className="inline-block w-2 h-2 bg-red-600 rounded-full" />
+                          Empty Combinations (0 sources)
+                        </h5>
+                        <div className="flex flex-wrap gap-1">
+                          {emptyCells.map((cell) => (
+                            <Badge
+                              key={`${cell.rowId}|${cell.colId}`}
+                              variant="outline"
+                              className="border-red-600 text-red-600 bg-red-50 dark:bg-red-900/20"
+                            >
+                              {cell.rowLabel} × {cell.colLabel}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {sparseCells.length > 0 && (
+                      <div>
+                        <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
+                          <span className="inline-block w-2 h-2 bg-amber-600 rounded-full" />
+                          Low Coverage (≤{data.threshold} sources)
+                        </h5>
+                        <div className="flex flex-wrap gap-1">
+                          {sparseCells.map((cell) => (
+                            <Badge
+                              key={`${cell.rowId}|${cell.colId}`}
+                              variant="outline"
+                              className="border-amber-600 text-amber-700 bg-amber-50 dark:bg-amber-900/20"
+                            >
+                              {cell.rowLabel} × {cell.colLabel}
+                              <span className="ml-1 text-xs opacity-70">({cell.count})</span>
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

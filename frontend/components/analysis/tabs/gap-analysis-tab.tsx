@@ -98,6 +98,11 @@ export function GapAnalysisTab({
               or identify areas needing more primary research. A low threshold (1-3) highlights
               severe gaps; higher thresholds (5-10) reveal moderate opportunities.
             </p>
+            <p className="text-xs opacity-80">
+              <strong>Note:</strong> Catch-all categories such as &ldquo;Unspecified&rdquo;,
+              &ldquo;None stated&rdquo; and &ldquo;Other&rdquo; are excluded — a low count there
+              reflects reporting, not an under-researched area.
+            </p>
           </CardContent>
         )}
       </Card>

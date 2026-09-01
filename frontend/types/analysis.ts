@@ -219,6 +219,8 @@ export interface SingleDimensionGap {
 export interface CrossTabGapCell {
   rowId: string;
   colId: string;
+  rowLabel: string;
+  colLabel: string;
   count: number;
 }
 
