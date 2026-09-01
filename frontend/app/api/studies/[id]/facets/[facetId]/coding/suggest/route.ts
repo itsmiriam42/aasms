@@ -37,6 +37,7 @@ export async function POST(request: NextRequest, { params }: SuggestRouteParams)
       where: { facetId },
       select: {
         keyword: true,
+        analysisId: true,
       },
     });
 
@@ -94,7 +95,9 @@ export async function POST(request: NextRequest, { params }: SuggestRouteParams)
       ...suggestions,
       categories: categoriesWithCounts,
       total_values: uniqueValues.length,
-      total_sources: keywords.length,
+      // One source contributes a keyword row per mechanism it uses, so the row
+      // count runs several times the number of sources behind it.
+      total_sources: new Set(keywords.map((k) => k.analysisId)).size,
     });
   } catch (error) {
     console.error("[coding/suggest] Error:", error);

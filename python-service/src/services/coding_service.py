@@ -7,6 +7,10 @@ from src.core.llm_provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
+# How many times to ask for a clustering before giving up and letting the
+# caller hand every value to the user unassigned.
+_SUGGEST_ATTEMPTS = 3
+
 
 class CodingService:
     """Service for LLM-assisted coding of OPEN facet values into categories."""
@@ -39,8 +43,13 @@ class CodingService:
         """
         logger.info(f"Suggesting categories for facet '{facet_name}' with {len(values)} values")
 
+        # Sorted so near-duplicates ("ADMM", "ADMM (Alternating Direction...)")
+        # sit next to each other. The model groups a sorted list far more
+        # reliably than the arbitrary insertion order the caller hands us.
+        sorted_values = sorted(values, key=str.casefold)
+
         # Build the prompt
-        values_list = "\n".join(f"- {v}" for v in values)
+        values_list = "\n".join(f"- {v}" for v in sorted_values)
         description_text = f"\nDescription: {facet_description}" if facet_description else ""
 
         prompt = f"""You are helping a researcher organize data from a systematic mapping study.
@@ -80,29 +89,80 @@ Important: Include ALL values from the input in either a category or uncategoriz
                 "reasoning": "string",
             }
 
-            result = await self.llm_provider.generate_structured_output(
-                prompt=prompt,
-                response_schema=response_schema,
-                max_tokens=4000,
-            )
+            # The model has to echo every input value back inside the grouping,
+            # so the output grows with the corpus. A fixed budget silently
+            # truncates the JSON on large facets, and a truncated body parses
+            # to {} — which looks like "the LLM found no categories" instead of
+            # the overflow it actually is.
+            max_tokens = min(32000, 2000 + len(values) * 16)
 
-            # Ensure proper structure
+            # An overflowing or malformed reply reaches us as {}, indistinguishable
+            # from "no categories found". On a large facet that happens often
+            # enough to matter, and a bare retry usually lands, so try again
+            # rather than handing the wizard an empty board.
+            result: dict[str, Any] = {}
+            for attempt in range(1, _SUGGEST_ATTEMPTS + 1):
+                result = await self.llm_provider.generate_structured_output(
+                    prompt=prompt,
+                    response_schema=response_schema,
+                    max_tokens=max_tokens,
+                )
+                if result.get("categories"):
+                    break
+                logger.warning(
+                    "Category suggestion returned no categories for '%s' "
+                    "(attempt %d/%d, %d values)",
+                    facet_name,
+                    attempt,
+                    _SUGGEST_ATTEMPTS,
+                    len(values),
+                )
+
+            # Every value must land in exactly one place, or the wizard's
+            # "assigned + unassigned" no longer reconciles with the value count
+            # and a value in two categories files its sources under both.
+            # The model routinely repeats a value across groups, so first
+            # placement wins and later ones are dropped.
+            known = set(values)
+            seen: set[str] = set()
+
             categories = result.get("categories", [])
             formatted_categories = []
             for cat in categories:
-                if isinstance(cat, dict):
-                    formatted_categories.append(
-                        {
-                            "name": cat.get("name", "Unknown"),
-                            "description": cat.get("description", ""),
-                            "values": cat.get("values", []),
-                            "source_count": len(cat.get("values", [])),
-                        }
-                    )
+                if not isinstance(cat, dict):
+                    continue
+                unique_values = []
+                for v in cat.get("values", []):
+                    # Guard against the model inventing values that were never
+                    # in the input — those have no keyword rows to classify.
+                    if isinstance(v, str) and v in known and v not in seen:
+                        seen.add(v)
+                        unique_values.append(v)
+                if not unique_values:
+                    continue
+                formatted_categories.append(
+                    {
+                        "name": cat.get("name", "Unknown"),
+                        "description": cat.get("description", ""),
+                        "values": unique_values,
+                        "source_count": len(unique_values),
+                    }
+                )
+
+            # Whatever the model dropped — or lost to a truncated response —
+            # still has to reach the coding wizard, otherwise those values are
+            # invisible and cannot be assigned by hand. Anything unaccounted
+            # for falls back to uncategorized.
+            uncategorized = []
+            for v in result.get("uncategorized", []):
+                if isinstance(v, str) and v in known and v not in seen:
+                    seen.add(v)
+                    uncategorized.append(v)
+            uncategorized.extend(v for v in values if v not in seen)
 
             return {
                 "categories": formatted_categories,
-                "uncategorized": result.get("uncategorized", []),
+                "uncategorized": uncategorized,
                 "reasoning": result.get("reasoning", ""),
             }
 
