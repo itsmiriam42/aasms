@@ -185,6 +185,8 @@ export interface VenueCount {
 export interface PrismaFlowData {
   totalRecordsIdentified: number;
   duplicatesRemoved: number;
+  /** Sources added outside a database import (seeds, snowballing, manual entry) */
+  otherSourcesIdentified: number;
 }
 
 export interface SummaryStats {

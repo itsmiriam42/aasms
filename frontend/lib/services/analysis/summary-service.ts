@@ -15,13 +15,22 @@ export async function getSummaryStats(studyId: string): Promise<SummaryStats> {
     formalSources,
     greySources,
     importBatchAgg,
+    otherSourcesIdentified,
   ] = await Promise.all([
     prisma.source.count({ where: { studyId } }),
     prisma.source.count({
       where: { studyId, finalDecision: Decision.INCLUDE },
     }),
+    // An exclusion is marked by either field: batch screening writes `status`,
+    // while manual/import-time decisions write `finalDecision`.
     prisma.source.count({
-      where: { studyId, finalDecision: Decision.EXCLUDE },
+      where: {
+        studyId,
+        OR: [
+          { finalDecision: Decision.EXCLUDE },
+          { status: SourceStatus.EXCLUDED },
+        ],
+      },
     }),
     prisma.source.count({
       where: { studyId, status: SourceStatus.CLASSIFIED },
@@ -44,6 +53,8 @@ export async function getSummaryStats(studyId: string): Promise<SummaryStats> {
       where: { studyId },
       _sum: { totalRecords: true, duplicates: true },
     }),
+    // Sources added outside a database import (seeds, snowballing, manual entry)
+    prisma.source.count({ where: { studyId, importBatchId: null } }),
   ]);
 
   // Get year range from included sources
@@ -151,6 +162,7 @@ export async function getSummaryStats(studyId: string): Promise<SummaryStats> {
     prismaFlow: {
       totalRecordsIdentified,
       duplicatesRemoved,
+      otherSourcesIdentified,
     },
   };
 }

@@ -8,6 +8,7 @@ import { exportSvgAsPng } from "./svg-export";
 export interface PrismaFlowDiagramProps {
   totalRecordsIdentified: number;
   duplicatesRemoved: number;
+  otherSourcesIdentified: number;
   totalSources: number;
   includedSources: number;
   excludedSources: number;
@@ -46,6 +47,7 @@ interface BoxConfig {
 export function PrismaFlowDiagram({
   totalRecordsIdentified,
   duplicatesRemoved,
+  otherSourcesIdentified,
   totalSources,
   includedSources,
   excludedSources,
@@ -53,6 +55,7 @@ export function PrismaFlowDiagram({
 }: PrismaFlowDiagramProps) {
   const svgRef = useRef<SVGSVGElement>(null);
 
+  const hasOtherSources = otherSourcesIdentified > 0;
   const screened = includedSources + excludedSources;
   const awaitingClassification = includedSources - classifiedSources;
 
@@ -71,8 +74,18 @@ export function PrismaFlowDiagram({
     w: BOX_W,
     h: BOX_H,
     lines: [
-      "Records identified",
+      hasOtherSources ? "Records identified via databases" : "Records identified",
       `(n = ${totalRecordsIdentified})`,
+    ],
+  };
+  const box1side: BoxConfig = {
+    x: SIDE_X,
+    y,
+    w: SIDE_BOX_W,
+    h: SIDE_BOX_H,
+    lines: [
+      "Identified via other sources",
+      `(n = ${otherSourcesIdentified})`,
     ],
   };
 
@@ -218,6 +231,8 @@ export function PrismaFlowDiagram({
         <Arrow from={box3} to={box4} />
         <Arrow from={box4} to={box5} />
 
+        {hasOtherSources && <ElbowArrow from={box1side} to={box2} />}
+
         {/* Horizontal arrows to side boxes */}
         <HArrow from={box3} to={box3side} />
         <HArrow from={box4} to={box4side} />
@@ -238,6 +253,7 @@ export function PrismaFlowDiagram({
 
         {/* Boxes */}
         <FlowBox config={box1} />
+        {hasOtherSources && <FlowBox config={box1side} />}
         <FlowBox config={box2} />
         <FlowBox config={box3} />
         <FlowBox config={box3side} variant="exclusion" />
@@ -306,6 +322,23 @@ function Arrow({ from, to }: { from: BoxConfig; to: BoxConfig }) {
       y1={y1}
       x2={x}
       y2={y2}
+      stroke="#94a3b8"
+      strokeWidth={1.5}
+      markerEnd="url(#arrowhead)"
+    />
+  );
+}
+
+/** Routes a side box down and into the right edge of a center box. */
+function ElbowArrow({ from, to }: { from: BoxConfig; to: BoxConfig }) {
+  const x1 = from.x;
+  const y1 = from.y + from.h;
+  const y2 = to.y + to.h / 2;
+  const x2 = to.x + to.w / 2;
+  return (
+    <path
+      d={`M${x1},${y1} L${x1},${y2} L${x2},${y2}`}
+      fill="none"
       stroke="#94a3b8"
       strokeWidth={1.5}
       markerEnd="url(#arrowhead)"

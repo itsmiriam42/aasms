@@ -33,6 +33,7 @@ export function OverviewTab({ stats, isLoading, facets, onFacetClick }: Overview
             <PrismaFlowDiagram
               totalRecordsIdentified={stats.prismaFlow.totalRecordsIdentified}
               duplicatesRemoved={stats.prismaFlow.duplicatesRemoved}
+              otherSourcesIdentified={stats.prismaFlow.otherSourcesIdentified}
               totalSources={stats.totalSources}
               includedSources={stats.includedSources}
               excludedSources={stats.excludedSources}
