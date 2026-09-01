@@ -185,6 +185,56 @@ async def test_one_provider_fails_still_votes(fake_provider_factory):
 
 
 @pytest.mark.asyncio
+async def test_empty_reply_is_a_failed_vote_not_a_negative_one(fake_provider_factory):
+    """An unparseable reply arrives as {} and must not become a silent decision=False vote.
+
+    llm_client returns {} instead of raising when a response is empty or does not match
+    the schema. Counting that as a valid "criterion not satisfied" vote would push every
+    affected paper toward exclusion with no error visible anywhere.
+    """
+    malformed = fake_provider_factory(decision=True)
+    malformed.set_responses([{}])
+
+    providers = [fake_provider_factory(decision=True), malformed]
+    service = MultiLLMVotingService(providers)
+
+    result = await service.vote_on_criterion(
+        prompt="test", criterion="C1", response_schema={"decision": "boolean"}
+    )
+
+    phantom = next(v for v in result.individual_votes if v.provider == "fake" and v.error)
+    assert "decision" in phantom.error
+    assert sum(1 for v in result.individual_votes if v.error is None) == 1
+
+
+@pytest.mark.asyncio
+async def test_empty_reply_does_not_fake_a_conflicted_vote(fake_provider_factory):
+    """Two agreeing providers plus one malformed reply is unanimous, not a 2:1 split.
+
+    The stratified verification step audits conflicted 2:1 votes, so a phantom negative
+    would send manual review after disagreements that never happened.
+    """
+    malformed = fake_provider_factory(decision=True)
+    malformed.set_responses([{}])
+
+    providers = [
+        fake_provider_factory(decision=True),
+        fake_provider_factory(decision=True),
+        malformed,
+    ]
+    service = MultiLLMVotingService(providers)
+
+    result = await service.vote_on_criterion(
+        prompt="test", criterion="C1", response_schema={"decision": "boolean"}
+    )
+
+    assert result.final_decision is True
+    assert result.vote_count == 2
+    assert result.total_voters == 3
+    assert result.agreement_ratio == 1.0
+
+
+@pytest.mark.asyncio
 async def test_insufficient_valid_votes(fake_provider_factory):
     """If too many providers fail, returns failed result."""
     failing1 = fake_provider_factory()

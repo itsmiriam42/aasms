@@ -225,6 +225,16 @@ class MultiLLMVotingService:
                 response_schema=response_schema,
             )
 
+            # An empty or schema-mismatched reply arrives here as {} rather than as an
+            # exception (llm_client returns {} on unparseable output). Without this guard
+            # it would silently become a valid decision=False vote — a phantom "criterion
+            # not satisfied" that counts toward the majority and is invisible to any
+            # error-based check. Treat it as a failed vote instead.
+            if not isinstance(result, dict) or "decision" not in result:
+                raise ValueError(
+                    f"malformed structured output, no 'decision' field: {str(result)[:200]}"
+                )
+
             return VoteResult(
                 provider=provider_name,
                 decision=bool(result.get("decision", False)),
