@@ -79,9 +79,12 @@ export function Heatmap({
         },
       },
       grid: {
-        left: "15%",
+        // containLabel: true means these offsets include the axis labels, so a
+        // small left value lets long y-axis labels claim whatever width they need.
+        left: 8,
         right: "10%",
-        bottom: "20%",
+        // Reserve room below the axis labels for the horizontal visualMap legend
+        bottom: 60,
         top: "10%",
         containLabel: true,
       },
@@ -91,8 +94,10 @@ export function Heatmap({
         axisLabel: {
           rotate: 45,
           interval: 0,
-          overflow: "truncate",
-          width: 80,
+          // Wrap long category names onto multiple lines instead of clipping them
+          overflow: "break",
+          width: 140,
+          lineHeight: 14,
         },
         splitArea: {
           show: true,
@@ -102,8 +107,10 @@ export function Heatmap({
         type: "category",
         data: data.rowLabels.map((r) => r.label),
         axisLabel: {
-          overflow: "truncate",
-          width: 100,
+          // Wrap long category names onto multiple lines instead of clipping them
+          overflow: "break",
+          width: 180,
+          lineHeight: 14,
         },
         splitArea: {
           show: true,
@@ -115,7 +122,7 @@ export function Heatmap({
         calculable: true,
         orient: "horizontal",
         left: "center",
-        bottom: "0%",
+        bottom: 0,
         inRange: {
           color: colorRange,
         },

@@ -78,9 +78,11 @@ export function BubblePlot({
         },
       },
       grid: {
-        left: "15%",
+        // containLabel: true means these offsets include the axis labels, so a
+        // small left value lets long y-axis labels claim whatever width they need.
+        left: 8,
         right: "10%",
-        bottom: "20%",
+        bottom: 8,
         top: "10%",
         containLabel: true,
       },
@@ -90,8 +92,10 @@ export function BubblePlot({
         axisLabel: {
           rotate: 45,
           interval: 0,
-          overflow: "truncate",
-          width: 80,
+          // Wrap long category names onto multiple lines instead of clipping them
+          overflow: "break",
+          width: 140,
+          lineHeight: 14,
         },
         splitLine: {
           show: true,
@@ -105,8 +109,10 @@ export function BubblePlot({
         type: "category",
         data: data.rowLabels.map((r) => r.label),
         axisLabel: {
-          overflow: "truncate",
-          width: 100,
+          // Wrap long category names onto multiple lines instead of clipping them
+          overflow: "break",
+          width: 180,
+          lineHeight: 14,
         },
         splitLine: {
           show: true,
