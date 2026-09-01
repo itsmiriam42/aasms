@@ -50,7 +50,16 @@ const studyParametersSchema = z.object({
     .optional(),
 });
 
-// POST /api/studies/[id]/parameters - Create or update study parameters
+const parametersInclude = {
+  formalSources: true,
+  greySources: true,
+  inclusionCriteria: { orderBy: { order: "asc" as const } },
+  exclusionCriteria: { orderBy: { order: "asc" as const } },
+};
+
+// POST /api/studies/[id]/parameters - Create or partially update study parameters.
+// Only the collections present in the body are replaced; everything else on the
+// StudyParameters row (PICO fields, omitted collections) is left untouched.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id: studyId } = await params;
@@ -66,70 +75,80 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { formalSources, greySources, inclusionCriteria, exclusionCriteria } = validation.data;
 
-    // Check if study exists
-    const study = await prisma.study.findUnique({
-      where: { id: studyId },
-      include: { parameters: true },
-    });
-
+    const study = await prisma.study.findUnique({ where: { id: studyId } });
     if (!study) {
       return NextResponse.json({ error: "Study not found" }, { status: 404 });
     }
 
-    // Delete existing parameters if they exist
-    if (study.parameters) {
-      await prisma.studyParameters.delete({
-        where: { id: study.parameters.id },
-      });
-    }
+    // Ensure the row exists without ever deleting it.
+    const existing = await prisma.studyParameters.upsert({
+      where: { studyId },
+      create: { studyId },
+      update: {},
+    });
+    const parametersId = existing.id;
 
-    // Create new parameters (without classificationSchema - that's now in Facet model)
-    const parameters = await prisma.studyParameters.create({
-      data: {
-        studyId,
-        formalSources: formalSources
-          ? {
-              create: formalSources.map((fs) => ({
-                name: fs.name,
-                type: fs.type,
-                searchString: fs.searchString,
-                dateRange: fs.dateRange,
-              })),
-            }
-          : undefined,
-        greySources: greySources
-          ? {
-              create: greySources.map((gs) => ({
-                name: gs.name,
-                type: gs.type,
-                url: gs.url,
-                searchStrategy: gs.searchStrategy,
-              })),
-            }
-          : undefined,
-        inclusionCriteria: inclusionCriteria
-          ? {
-              create: inclusionCriteria.map((ic) => ({
-                criterion: ic.criterion,
-                order: ic.order,
-              })),
-            }
-          : undefined,
-        exclusionCriteria: exclusionCriteria
-          ? {
-              create: exclusionCriteria.map((ec) => ({
-                criterion: ec.criterion,
-                order: ec.order,
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        formalSources: true,
-        greySources: true,
-        inclusionCriteria: { orderBy: { order: "asc" } },
-        exclusionCriteria: { orderBy: { order: "asc" } },
-      },
+    await prisma.$transaction(async (tx) => {
+      if (formalSources !== undefined) {
+        await tx.formalSource.deleteMany({ where: { parametersId } });
+        if (formalSources.length > 0) {
+          await tx.formalSource.createMany({
+            data: formalSources.map((fs) => ({
+              parametersId,
+              name: fs.name,
+              type: fs.type,
+              searchString: fs.searchString,
+              dateRange: fs.dateRange,
+            })),
+          });
+        }
+      }
+
+      if (greySources !== undefined) {
+        await tx.greySource.deleteMany({ where: { parametersId } });
+        if (greySources.length > 0) {
+          await tx.greySource.createMany({
+            data: greySources.map((gs) => ({
+              parametersId,
+              name: gs.name,
+              type: gs.type,
+              url: gs.url,
+              searchStrategy: gs.searchStrategy,
+            })),
+          });
+        }
+      }
+
+      if (inclusionCriteria !== undefined) {
+        await tx.inclusionCriterion.deleteMany({ where: { parametersId } });
+        if (inclusionCriteria.length > 0) {
+          await tx.inclusionCriterion.createMany({
+            data: inclusionCriteria.map((ic) => ({
+              parametersId,
+              criterion: ic.criterion,
+              order: ic.order,
+            })),
+          });
+        }
+      }
+
+      if (exclusionCriteria !== undefined) {
+        await tx.exclusionCriterion.deleteMany({ where: { parametersId } });
+        if (exclusionCriteria.length > 0) {
+          await tx.exclusionCriterion.createMany({
+            data: exclusionCriteria.map((ec) => ({
+              parametersId,
+              criterion: ec.criterion,
+              order: ec.order,
+            })),
+          });
+        }
+      }
+    });
+
+    const parameters = await prisma.studyParameters.findUnique({
+      where: { id: parametersId },
+      include: parametersInclude,
     });
 
     return NextResponse.json({ data: parameters }, { status: 201 });
@@ -145,12 +164,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { id: studyId } = await params;
     const parameters = await prisma.studyParameters.findUnique({
       where: { studyId },
-      include: {
-        formalSources: true,
-        greySources: true,
-        inclusionCriteria: { orderBy: { order: "asc" } },
-        exclusionCriteria: { orderBy: { order: "asc" } },
-      },
+      include: parametersInclude,
     });
 
     if (!parameters) {
