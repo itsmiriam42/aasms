@@ -150,10 +150,28 @@ def _to_json_schema(response_schema: dict[str, Any] | None = None) -> dict[str, 
 def _to_gemini_schema(response_schema: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Convert a schema to Gemini-compatible format.
-    Gemini doesn't support 'additionalProperties', so we strip it.
+    Gemini doesn't support 'additionalProperties', so we strip it. Gemini also
+    generates object properties in `propertyOrdering` (default: alphabetical),
+    so we pin it to the schema's declaration order — schemas place `reasoning`
+    before `decision` so the model reasons before committing the answer.
     """
     schema = _to_json_schema(response_schema)
-    return _strip_additional_properties(schema)
+    return _add_property_ordering(_strip_additional_properties(schema))
+
+
+def _add_property_ordering(schema: dict[str, Any]) -> dict[str, Any]:
+    """Recursively set `propertyOrdering` on object schemas from declaration order."""
+    if not isinstance(schema, dict):
+        return schema
+
+    result = dict(schema)
+    props = result.get("properties")
+    if isinstance(props, dict):
+        result["properties"] = {k: _add_property_ordering(v) for k, v in props.items()}
+        result["propertyOrdering"] = list(props.keys())
+    if isinstance(result.get("items"), dict):
+        result["items"] = _add_property_ordering(result["items"])
+    return result
 
 
 def _strip_additional_properties(schema: dict[str, Any]) -> dict[str, Any]:
@@ -394,6 +412,10 @@ async def _generate_json_gemini(
                 response_schema=json_schema,
                 temperature=temperature,
                 max_output_tokens=max_tokens,
+                # Bounded deliberation before the structured answer. Without this,
+                # lite models emit the decision field with no thinking at all and
+                # full models think unbounded (billed as output tokens).
+                thinking_config=types.ThinkingConfig(thinking_budget=512),
             )
         except (ImportError, AttributeError):
             # Fallback for older SDK versions
@@ -413,6 +435,14 @@ async def _generate_json_gemini(
     try:
         response = await asyncio.to_thread(_sync_generate)
         text = response.text if hasattr(response, "text") else ""
+        usage = getattr(response, "usage_metadata", None)
+        if usage:
+            logger.info(
+                f"gemini usage: model={model_name} "
+                f"prompt={getattr(usage, 'prompt_token_count', None)} "
+                f"thoughts={getattr(usage, 'thoughts_token_count', None)} "
+                f"output={getattr(usage, 'candidates_token_count', None)}"
+            )
         logger.info(f"raw_llm_response_preview (gemini): {text[:500]}...")
 
         if not text:

@@ -204,12 +204,15 @@ class InclusionEvaluationService:
             },
         )
 
-        # Response schema for criterion evaluation
+        # Response schema for criterion evaluation.
+        # Field order is deliberate: reasoning precedes decision so the model
+        # commits to the boolean AFTER writing its analysis (structured output
+        # generates fields in schema order; see _to_gemini_schema).
         response_schema = {
             "criterion": "string",
+            "reasoning": "string",
             "decision": "boolean",
             "confidence": "number",
-            "reasoning": "string",
         }
 
         # Create voting tasks for all criteria
@@ -473,11 +476,13 @@ class InclusionEvaluationService:
         try:
             result = await self.llm_provider.generate_structured_output(
                 prompt=prompt,
+                # reasoning before decision: fields generate in schema order,
+                # so the model reasons first and commits the boolean last
                 response_schema={
                     "criterion": "string",
+                    "reasoning": "string",
                     "decision": "boolean",
                     "confidence": "number",
-                    "reasoning": "string",
                 },
                 previous_response_id=context_id,
             )
