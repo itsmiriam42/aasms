@@ -8,6 +8,9 @@ from src.core.llm_provider import LLMProvider
 
 logger = logging.getLogger(__name__)
 
+# Retries for a summary that comes back empty (usually a truncated reply).
+_SUMMARY_ATTEMPTS = 3
+
 RESPONSE_SCHEMA = {
     "summary": "string",
     "key_findings": ["string"],
@@ -40,20 +43,39 @@ class RQSummaryService:
         """
         prompt = self._build_prompt(question, facet_data, source_evidence)
 
-        result = await self.llm_provider.generate_structured_output(
-            prompt=prompt,
-            system_prompt=(
-                "You are an academic research assistant helping synthesize findings "
-                "from a systematic mapping study. Provide evidence-based, concise answers "
-                "to research questions based on the classification data and source evidence provided."
-            ),
-            response_schema=RESPONSE_SCHEMA,
-            max_tokens=2000,
-        )
+        # A narrative paragraph plus findings and gaps overruns a 2k budget on
+        # facet-rich questions. The reply then truncates mid-JSON and parses to
+        # {} — which used to surface as a blank answer labelled "limited",
+        # indistinguishable from a real finding of limited evidence.
+        result: dict[str, Any] = {}
+        for attempt in range(1, _SUMMARY_ATTEMPTS + 1):
+            result = await self.llm_provider.generate_structured_output(
+                prompt=prompt,
+                system_prompt=(
+                    "You are an academic research assistant helping synthesize findings "
+                    "from a systematic mapping study. Provide evidence-based, concise answers "
+                    "to research questions based on the classification data and source evidence provided."
+                ),
+                response_schema=RESPONSE_SCHEMA,
+                max_tokens=8000,
+            )
+            if result.get("summary"):
+                break
+            logger.warning(
+                "rq-summary: empty response for %r (attempt %d/%d)",
+                question[:60],
+                attempt,
+                _SUMMARY_ATTEMPTS,
+            )
+
+        # Never dress a failed generation up as an evidence judgement — the
+        # caller reports it as a failure the user can retry instead.
+        if not result.get("summary"):
+            raise RuntimeError("LLM returned no summary after %d attempts" % _SUMMARY_ATTEMPTS)
 
         # Validate and normalize
         return {
-            "summary": result.get("summary", ""),
+            "summary": result["summary"],
             "key_findings": result.get("key_findings", []),
             "evidence_quality": result.get("evidence_quality", "limited"),
             "gaps": result.get("gaps", []),

@@ -176,3 +176,92 @@ async def test_facet_filtering_by_rq_id(service, sample_facet_data, sample_sourc
     # Both should succeed (rq999 just gets no facet data)
     assert results[0]["rq_id"] == "rq1"
     assert results[1]["rq_id"] == "rq999"
+
+
+class _SequenceProvider:
+    """Replays queued structured responses, recording the budget it was given."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = 0
+        self.max_tokens = None
+
+    async def generate_structured_output(self, prompt, response_schema, max_tokens, **kwargs):
+        self.calls += 1
+        self.max_tokens = max_tokens
+        return self._responses.pop(0)
+
+
+_GOOD = {
+    "summary": "Coordination is dominated by centralized optimization.",
+    "key_findings": ["one"],
+    "evidence_quality": "strong",
+    "gaps": ["two"],
+}
+
+
+@pytest.mark.asyncio
+async def test_truncated_reply_is_retried():
+    provider = _SequenceProvider([{}, {}, _GOOD])
+
+    result = await RQSummaryService(provider).generate_summary("RQ?", [], [])
+
+    assert provider.calls == 3
+    assert result["evidence_quality"] == "strong"
+
+
+@pytest.mark.asyncio
+async def test_no_retry_once_a_summary_arrives():
+    provider = _SequenceProvider([_GOOD, _GOOD, _GOOD])
+
+    await RQSummaryService(provider).generate_summary("RQ?", [], [])
+
+    assert provider.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_generation_is_not_reported_as_limited_evidence():
+    """A blank answer labelled "limited" reads as a real finding. It must raise."""
+    provider = _SequenceProvider([{}, {}, {}])
+
+    with pytest.raises(RuntimeError):
+        await RQSummaryService(provider).generate_summary("RQ?", [], [])
+
+
+@pytest.mark.asyncio
+async def test_budget_allows_a_full_narrative_answer():
+    provider = _SequenceProvider([_GOOD])
+
+    await RQSummaryService(provider).generate_summary("RQ?", [], [])
+
+    assert provider.max_tokens >= 8000
+
+
+class _ByQuestionProvider:
+    """Answers per question, so concurrent RQs cannot race over a shared queue."""
+
+    def __init__(self, responses):
+        self._responses = responses
+
+    async def generate_structured_output(self, prompt, response_schema, max_tokens, **kwargs):
+        for marker, response in self._responses.items():
+            if marker in prompt:
+                return response
+        return {}
+
+
+@pytest.mark.asyncio
+async def test_one_failing_rq_does_not_sink_the_others():
+    # RQ2 never produces a summary; the other two must still come back.
+    provider = _ByQuestionProvider({"RQ1?": _GOOD, "RQ2?": {}, "RQ3?": _GOOD})
+    rqs = [
+        {"id": "a", "question": "RQ1?"},
+        {"id": "b", "question": "RQ2?"},
+        {"id": "c", "question": "RQ3?"},
+    ]
+
+    summaries = await RQSummaryService(provider).generate_all_summaries(rqs, [], [])
+
+    assert [s["rq_id"] for s in summaries] == ["a", "b", "c"]
+    assert summaries[1]["summary"].startswith("Failed to generate")
+    assert summaries[2]["summary"] == _GOOD["summary"]
